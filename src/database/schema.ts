@@ -189,3 +189,36 @@ export const SCHEMA_V1 = `
   CREATE INDEX sintomas_por_registro
     ON sintomas_registrados(registro_diario_id);
 `;
+
+export const SCHEMA_V2 = `
+  CREATE TABLE menstruacoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    perfil_id INTEGER NOT NULL DEFAULT 1,
+    configuracao_id INTEGER NOT NULL,
+    data_inicio TEXT NOT NULL,
+    data_fim TEXT,
+    observacoes TEXT NOT NULL DEFAULT '',
+    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (perfil_id)
+      REFERENCES perfis(id)
+      ON DELETE CASCADE,
+
+    FOREIGN KEY (configuracao_id)
+      REFERENCES configuracoes(id)
+      ON DELETE RESTRICT,
+
+    CHECK (
+      data_fim IS NULL OR data_fim >= data_inicio
+    ),
+
+    UNIQUE (perfil_id, data_inicio)
+  );
+
+  CREATE UNIQUE INDEX menstruacao_aberta_por_perfil
+    ON menstruacoes(perfil_id)
+    WHERE data_fim IS NULL;
+
+  CREATE INDEX menstruacoes_por_inicio
+    ON menstruacoes(perfil_id, data_inicio);
+`;
