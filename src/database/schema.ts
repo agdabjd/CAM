@@ -222,3 +222,7 @@ export const SCHEMA_V2 = `
   CREATE INDEX menstruacoes_por_inicio
     ON menstruacoes(perfil_id, data_inicio);
 `;
+
+export const SCHEMA_V3 = `
+  ALTER TABLE perfis ADD COLUMN sessao_hash TEXT;
+`;

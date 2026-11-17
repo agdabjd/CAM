@@ -1,6 +1,10 @@
 import * as SQLite from 'expo-sqlite';
 
-import { SCHEMA_V1, SCHEMA_V2 } from './schema';
+import {
+  SCHEMA_V1,
+  SCHEMA_V2,
+  SCHEMA_V3,
+} from './schema';
 
 let bancoPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -18,20 +22,24 @@ async function abrirEPrepararBanco() {
 
   const versao = resultado?.user_version ?? 0;
 
-  if (versao > 2) {
+  if (versao > 3) {
     throw new Error(
-      'O banco foi criado por uma versão mais recente do aplicativo.'
+      'O banco pertence a uma versão mais recente do aplicativo.'
     );
   }
 
-  if (versao < 2) {
+  if (versao < 3) {
     await banco.withExclusiveTransactionAsync(async (transacao) => {
       if (versao === 0) {
         await transacao.execAsync(SCHEMA_V1);
       }
 
-      await transacao.execAsync(SCHEMA_V2);
-      await transacao.execAsync('PRAGMA user_version = 2');
+      if (versao < 2) {
+        await transacao.execAsync(SCHEMA_V2);
+      }
+
+      await transacao.execAsync(SCHEMA_V3);
+      await transacao.execAsync('PRAGMA user_version = 3');
     });
   }
 

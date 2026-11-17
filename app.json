@@ -24,7 +24,9 @@
     },
     "plugins": [
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store",
+      "react-native-quick-crypto"
     ],
     "extra": {
       "eas": {
