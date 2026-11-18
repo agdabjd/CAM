@@ -226,3 +226,14 @@ export const SCHEMA_V2 = `
 export const SCHEMA_V3 = `
   ALTER TABLE perfis ADD COLUMN sessao_hash TEXT;
 `;
+
+export const SCHEMA_V4 = `
+  CREATE TABLE onboarding_rascunhos (
+    perfil_id INTEGER PRIMARY KEY CHECK (perfil_id = 1),
+    conteudo TEXT NOT NULL,
+
+    FOREIGN KEY (perfil_id)
+      REFERENCES perfis(id)
+      ON DELETE CASCADE
+  );
+`;

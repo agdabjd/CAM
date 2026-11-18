@@ -1,11 +1,11 @@
 import { ActivityIndicator, Text, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
-import AppNavigator from './src/navigation/AppNavigator';
+
 import AuthScreen from './src/screens/AuthScreen';
+import AcompanhamentoGate from './src/navigation/AcompanhamentoGate';
 
 function Conteudo() {
   const { carregando, erroInicial, usuario } = useAuth();
@@ -34,11 +34,7 @@ function Conteudo() {
     return <AuthScreen />;
   }
 
-  return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
-  );
+  return <AcompanhamentoGate />;
 }
 
 export default function App() {

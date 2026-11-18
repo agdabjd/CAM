@@ -2,11 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import {
-  InicioScreen,
   CalendarioScreen,
   RegistrosScreen,
   PerfilScreen,
 } from '../screens';
+
+import InicioScreen from '../screens/InicioScreen';
 
 type TabParamList = {
   Inicio: undefined;
