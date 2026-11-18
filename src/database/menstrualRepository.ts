@@ -1,5 +1,7 @@
 import { obterBanco } from './database';
 
+import { hojeLocal } from '../domain/datas';
+
 export type Menstruacao = {
   id: number;
   perfil_id: number;
@@ -46,6 +48,17 @@ export async function salvarMenstruacao(
         'O fim da menstruação não pode ser anterior ao início.'
       );
     }
+  }
+
+  const hoje = hojeLocal();
+
+  if (
+    dados.dataInicio > hoje ||
+    (dataFim !== null && dataFim > hoje)
+  ) {
+    throw new Error(
+      'Registros realizados não podem ter datas futuras.'
+    );
   }
 
   const banco = await obterBanco();
