@@ -14,6 +14,8 @@ import { existeConfiguracao } from '../database/onboardingRepository';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import AppNavigator from './AppNavigator';
 
+import { RegistrosProvider } from '../features/registros/RegistrosProvider';
+
 export default function AcompanhamentoGate() {
   const [configurado, setConfigurado] = useState<boolean | null>(
     null
@@ -73,7 +75,9 @@ export default function AcompanhamentoGate() {
 
   return (
     <NavigationContainer>
-      <AppNavigator />
+      <RegistrosProvider>
+        <AppNavigator />
+      </RegistrosProvider>
     </NavigationContainer>
   );
 }

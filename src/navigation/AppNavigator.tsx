@@ -3,11 +3,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import {
   CalendarioScreen,
-  RegistrosScreen,
   PerfilScreen,
 } from '../screens';
 
 import InicioScreen from '../screens/InicioScreen';
+import RegistrosScreen from '../screens/RegistrosScreen';
 
 type TabParamList = {
   Inicio: undefined;

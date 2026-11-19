@@ -237,3 +237,9 @@ export const SCHEMA_V4 = `
       ON DELETE CASCADE
   );
 `;
+
+export const SCHEMA_V5 = `
+  ALTER TABLE registros_diarios ADD COLUMN horario TEXT;
+  ALTER TABLE menstruacoes ADD COLUMN horario_inicio TEXT;
+  ALTER TABLE menstruacoes ADD COLUMN horario_fim TEXT;
+`;
