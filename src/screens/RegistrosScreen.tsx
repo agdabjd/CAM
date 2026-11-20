@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useMemo } from 'react';
 
 import {
   ActivityIndicator,
   Alert,
+  Button,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,70 +11,91 @@ import {
   View,
 } from 'react-native';
 
-import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   excluirDia,
   excluirPeriodo,
-  listarDiarios,
-  listarPeriodos,
 } from '../database/registrosRepository';
 
-import { buscarConfiguracaoDaData } from '../database/acompanhamentoRepository';
-
 import { useRegistros } from '../features/registros/RegistrosProvider';
+import { useLinhaDoTempo } from '../features/registros/useLinhaDoTempo';
 
-import { hojeLocal } from '../domain/datas';
-import { formatarData } from '../domain/onboarding';
+import {
+  criarConsultaLinhaDoTempo,
+  type GrupoHistorico,
+  type TipoLinha,
+} from '../domain/linhaDoTempo';
 
-type Diarios = Awaited<ReturnType<typeof listarDiarios>>;
-type Periodos = Awaited<ReturnType<typeof listarPeriodos>>;
+import { hojeLocal, somarDias } from '../domain/datas';
+
+const MESES = [
+  'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+  'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+];
+
+const ICONES: Record<
+  TipoLinha,
+  keyof typeof Ionicons.glyphMap
+> = {
+  acao: 'checkmark-circle-outline',
+  humor: 'happy-outline',
+  sangramento: 'water-outline',
+  sintomas: 'pulse-outline',
+  observacao: 'create-outline',
+  menstruacao: 'flower-outline',
+  registro: 'document-text-outline',
+};
+
+const CORES: Record<TipoLinha, string> = {
+  acao: '#8563A6',
+  humor: '#DF5D83',
+  sangramento: '#DF5D83',
+  sintomas: '#9DBFA9',
+  observacao: '#80768B',
+  menstruacao: '#DF5D83',
+  registro: '#80768B',
+};
+
+function tituloData(data: string, hoje: string) {
+  const dia = Number(data.slice(8, 10));
+  const mes = MESES[Number(data.slice(5, 7)) - 1];
+
+  const prefixo =
+    data === hoje
+      ? 'HOJE, '
+      : data === somarDias(hoje, -1)
+        ? 'ONTEM, '
+        : '';
+
+  const ano =
+    data.slice(0, 4) !== hoje.slice(0, 4)
+      ? ` ${data.slice(0, 4)}`
+      : '';
+
+  return `${prefixo}${dia} ${mes}${ano}`;
+}
 
 export default function RegistrosScreen() {
   const {
-    versao,
-    atualizar,
     abrirDia,
     abrirPeriodo,
+    atualizar,
   } = useRegistros();
 
-  const [diarios, setDiarios] = useState<Diarios>([]);
-  const [periodos, setPeriodos] = useState<Periodos>([]);
-  const [modoMenstrual, setModoMenstrual] = useState(false);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState(false);
+  const {
+    dados,
+    carregando,
+    erro,
+    recarregar,
+  } = useLinhaDoTempo();
 
-  useFocusEffect(
-    useCallback(() => {
-      let ativo = true;
+  const hoje = hojeLocal();
 
-      setCarregando(true);
-      setErro(false);
-
-      Promise.all([
-        listarDiarios(),
-        listarPeriodos(),
-        buscarConfiguracaoDaData(hojeLocal()),
-      ])
-        .then(([dias, menstruacoes, configuracao]) => {
-          if (!ativo) return;
-
-          setDiarios(dias);
-          setPeriodos(menstruacoes);
-          setModoMenstrual(configuracao?.modo === 'menstrual');
-        })
-        .catch(() => {
-          if (ativo) setErro(true);
-        })
-        .finally(() => {
-          if (ativo) setCarregando(false);
-        });
-
-      return () => {
-        ativo = false;
-      };
-    }, [versao])
+  const consulta = useMemo(
+    () => dados ? criarConsultaLinhaDoTempo(dados, hoje) : null,
+    [dados, hoje]
   );
 
   function confirmarExclusao(
@@ -83,7 +105,7 @@ export default function RegistrosScreen() {
     Alert.alert(
       'Excluir registro?',
       tipo === 'dia'
-        ? 'As anotações e ações deste dia serão removidas. ' +
+        ? 'As ações e anotações deste diário serão removidas. ' +
           'Os períodos menstruais serão mantidos.'
         : 'Este período menstrual será removido. ' +
           'As anotações diárias serão mantidas.',
@@ -112,123 +134,162 @@ export default function RegistrosScreen() {
     );
   }
 
+  function menuDiario(grupo: GrupoHistorico) {
+    const id = grupo.diarioId;
+    if (id === null) return;
+
+    Alert.alert('Registro diário', 'O que deseja fazer?', [
+      {
+        text: 'Editar',
+        onPress: () => abrirDia(grupo.data),
+      },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => confirmarExclusao('dia', id),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
+  function menuPeriodo(id: number) {
+    Alert.alert('Menstruação', 'O que deseja fazer?', [
+      {
+        text: 'Editar',
+        onPress: () => abrirPeriodo(id),
+      },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => confirmarExclusao('periodo', id),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
+  function abrirOpcoes(grupo: GrupoHistorico) {
+    const periodoId = grupo.periodoIds[0];
+
+    if (grupo.diarioId !== null && periodoId !== undefined) {
+      Alert.alert('Opções do dia', 'Escolha o registro:', [
+        {
+          text: 'Registro diário',
+          onPress: () => menuDiario(grupo),
+        },
+        {
+          text: 'Menstruação',
+          onPress: () => menuPeriodo(periodoId),
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]);
+    } else if (grupo.diarioId !== null) {
+      menuDiario(grupo);
+    } else if (periodoId !== undefined) {
+      menuPeriodo(periodoId);
+    }
+  }
+
+  function adicionar() {
+    const modo = consulta?.consultarDia(hoje).modo;
+
+    if (modo !== 'menstrual') {
+      abrirDia();
+      return;
+    }
+
+    Alert.alert('Novo registro', 'O que deseja registrar?', [
+      {
+        text: 'Registro diário',
+        onPress: () => abrirDia(),
+      },
+      {
+        text: 'Menstruação',
+        onPress: () => abrirPeriodo(),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
   return (
     <SafeAreaView edges={['top']} style={s.pagina}>
-      <ScrollView contentContainerStyle={{ padding: 22 }}>
-        <View style={s.linha}>
+      <ScrollView contentContainerStyle={s.conteudo}>
+        <View style={s.cabecalho}>
           <Text style={s.titulo}>Registros</Text>
 
-          <Pressable onPress={() => abrirDia()} style={s.adicionar}>
-            <Text style={{ color: '#FFFFFF', fontSize: 25 }}>+</Text>
+          <Pressable
+            onPress={adicionar}
+            style={s.adicionar}
+            accessibilityLabel="Adicionar registro"
+          >
+            <Ionicons name="add" size={24} color="#FFFFFF" />
           </Pressable>
         </View>
-
-        {modoMenstrual && (
-          <Pressable
-            onPress={() => abrirPeriodo()}
-            style={{ marginTop: 20 }}
-          >
-            <Text style={s.link}>+ Registrar menstruação</Text>
-          </Pressable>
-        )}
 
         {carregando ? (
           <ActivityIndicator
             color="#8563A6"
-            style={{ marginTop: 30 }}
+            style={{ marginTop: 24 }}
           />
         ) : erro ? (
-          <Text style={{ marginTop: 24 }}>
-            Não foi possível carregar os registros.
+          <View style={{ gap: 12 }}>
+            <Text>Não foi possível carregar o histórico.</Text>
+            <Button title="Tentar novamente" onPress={recarregar} />
+          </View>
+        ) : consulta?.historico.length === 0 ? (
+          <Text style={s.vazio}>
+            Seus registros aparecerão aqui.
           </Text>
         ) : (
-          <>
-            <Text style={s.secao}>REGISTROS DIÁRIOS</Text>
-
-            {diarios.length === 0 && (
-              <Text style={s.discreto}>
-                Seus registros aparecerão aqui.
+          consulta?.historico.map((grupo) => (
+            <View key={grupo.data} style={{ marginBottom: 22 }}>
+              <Text style={s.data}>
+                {tituloData(grupo.data, hoje)}
               </Text>
-            )}
 
-            {diarios.map((item) => (
-              <View key={item.id} style={s.cartao}>
-                <Pressable onPress={() => abrirDia(item.data)}>
-                  <Text style={s.data}>
-                    {formatarData(item.data)}
-                    {item.horario ? ` às ${item.horario}` : ''}
-                  </Text>
-
-                  {!!item.humor && <Text>{item.humor}</Text>}
-
-                  {item.sangramento_fluxo !== 'nenhum' && (
-                    <Text>
-                      Sangramento: {item.sangramento_fluxo}
-                    </Text>
-                  )}
-
-                  {!!item.observacoes && (
-                    <Text numberOfLines={2}>
-                      {item.observacoes}
-                    </Text>
-                  )}
-
-                  <Text style={s.link}>
-                    Ver ações, sintomas e editar
-                  </Text>
-                </Pressable>
-
+              <View style={s.cartao}>
                 <Pressable
-                  onPress={() =>
-                    confirmarExclusao('dia', item.id)
-                  }
+                  style={s.opcoes}
+                  onPress={() => abrirOpcoes(grupo)}
+                  accessibilityLabel="Opções dos registros deste dia"
+                  hitSlop={8}
                 >
-                  <Text style={s.excluir}>Excluir</Text>
+                  <Ionicons
+                    name="ellipsis-horizontal"
+                    size={18}
+                    color="#80768B"
+                  />
                 </Pressable>
-              </View>
-            ))}
 
-            <Text style={s.secao}>MENSTRUAÇÕES REGISTRADAS</Text>
+                {grupo.linhas.map((linha, indice) => (
+                  <Pressable
+                    key={`${linha.tipo}-${indice}`}
+                    onPress={() => {
+                      if (linha.periodoId !== undefined) {
+                        abrirPeriodo(linha.periodoId);
+                      } else {
+                        abrirDia(grupo.data);
+                      }
+                    }}
+                    style={[
+                      s.linha,
+                      indice < grupo.linhas.length - 1 &&
+                        s.separador,
+                    ]}
+                  >
+                    <Ionicons
+                      name={ICONES[linha.tipo]}
+                      size={19}
+                      color={CORES[linha.tipo]}
+                    />
 
-            {periodos.length === 0 && (
-              <Text style={s.discreto}>
-                Nenhuma menstruação registrada.
-              </Text>
-            )}
-
-            {periodos.map((item) => (
-              <View key={item.id} style={s.cartao}>
-                <Pressable onPress={() => abrirPeriodo(item.id)}>
-                  <Text style={s.data}>
-                    {formatarData(item.data_inicio)}
-                    {item.data_fim
-                      ? ` a ${formatarData(item.data_fim)}`
-                      : ' — em andamento'}
-                  </Text>
-
-                  {!!item.observacoes && (
-                    <Text numberOfLines={2}>
-                      {item.observacoes}
+                    <Text style={s.textoLinha}>
+                      {linha.texto}
                     </Text>
-                  )}
-
-                  <Text style={s.link}>
-                    Editar início, fim e observações
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    if (item.id !== undefined) {
-                      confirmarExclusao('periodo', item.id);
-                    }
-                  }}
-                >
-                  <Text style={s.excluir}>Excluir</Text>
-                </Pressable>
+                  </Pressable>
+                ))}
               </View>
-            ))}
-          </>
+            </View>
+          ))
         )}
       </ScrollView>
     </SafeAreaView>
@@ -237,10 +298,12 @@ export default function RegistrosScreen() {
 
 const s = StyleSheet.create({
   pagina: { flex: 1, backgroundColor: '#FAF7FC' },
-  linha: {
+  conteudo: { padding: 22, paddingBottom: 32 },
+  cabecalho: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 26,
   },
   titulo: {
     fontSize: 26,
@@ -248,35 +311,53 @@ const s = StyleSheet.create({
     color: '#182235',
   },
   adicionar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#8563A6',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secao: {
+  data: {
     color: '#80768B',
     fontSize: 12,
     letterSpacing: 1.2,
-    marginTop: 28,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   cartao: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#EAE3F0',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 14,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  opcoes: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    zIndex: 1,
+  },
+  linha: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
+    paddingVertical: 14,
+    paddingRight: 24,
   },
-  data: {
+  separador: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EAF5',
+  },
+  textoLinha: {
+    flex: 1,
     color: '#182235',
-    fontWeight: '600',
-    marginBottom: 10,
+    fontSize: 14,
+    lineHeight: 21,
   },
-  link: { color: '#8563A6', marginTop: 10 },
-  excluir: { color: '#B64F74', marginTop: 4 },
-  discreto: { color: '#80768B' },
+  vazio: {
+    color: '#80768B',
+    lineHeight: 22,
+    marginTop: 12,
+  },
 });
