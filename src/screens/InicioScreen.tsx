@@ -45,6 +45,8 @@ import {
 
 import { configuracaoParaCiclo } from '../domain/menstrual/configuracaoParaCiclo';
 
+import { useNotificacoes } from '../features/notificacoes/NotificacoesProvider';
+
 export default function InicioScreen() {
   const { usuario } = useAuth();
   const { versao, abrirDia, abrirPeriodo } = useRegistros();
@@ -57,6 +59,8 @@ export default function InicioScreen() {
 
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
+
+  const { abrirNotificacoes } = useNotificacoes();
 
   useFocusEffect(
     useCallback(() => {
@@ -221,16 +225,18 @@ export default function InicioScreen() {
             <Text style={s.nome}>{usuario?.nome} ✨</Text>
           </View>
 
-          <View
+          <Pressable
             style={s.sino}
-            accessibilityLabel="Notificações"
+            accessibilityRole="button"
+            accessibilityLabel="Configurar notificações"
+            onPress={abrirNotificacoes}
           >
             <Ionicons
               name="notifications-outline"
               size={22}
               color="#8563A6"
             />
-          </View>
+          </Pressable>
         </View>
 
         <View style={s.principal}>

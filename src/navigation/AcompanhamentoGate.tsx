@@ -16,6 +16,8 @@ import AppNavigator from './AppNavigator';
 
 import { RegistrosProvider } from '../features/registros/RegistrosProvider';
 
+import { NotificacoesProvider } from '../features/notificacoes/NotificacoesProvider';
+
 export default function AcompanhamentoGate() {
   const [configurado, setConfigurado] = useState<boolean | null>(
     null
@@ -76,7 +78,9 @@ export default function AcompanhamentoGate() {
   return (
     <NavigationContainer>
       <RegistrosProvider>
-        <AppNavigator />
+        <NotificacoesProvider>
+          <AppNavigator />
+        </NotificacoesProvider>
       </RegistrosProvider>
     </NavigationContainer>
   );
