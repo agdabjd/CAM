@@ -404,7 +404,7 @@ export default function OnboardingScreen({
         <ScrollView
           contentContainerStyle={[
             styles.conteudo,
-            etapa === 'modo' && styles.conteudoCentralizado,
+            styles.conteudoCentralizado,
           ]}
           keyboardShouldPersistTaps="handled"
           pointerEvents={ocupado ? 'none' : 'auto'}
