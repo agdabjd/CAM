@@ -258,3 +258,63 @@ export const SCHEMA_V6 = `
   INSERT INTO preferencias (perfil_id, primeiro_dia_semana)
   SELECT id, 0 FROM perfis WHERE id = 1;
 `;
+
+export const SCHEMA_V7 = `
+  CREATE TABLE lembretes_novos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    perfil_id INTEGER NOT NULL DEFAULT 1,
+
+    tipo TEXT NOT NULL CHECK (
+      tipo IN (
+        'acao',
+        'inicio_pausa',
+        'fim_pausa',
+        'inicio_menstruacao',
+        'fim_menstruacao',
+        'registro',
+        'resumo_semanal',
+        'personalizado'
+      )
+    ),
+
+    titulo TEXT NOT NULL,
+    mensagem TEXT NOT NULL,
+
+    ativo INTEGER NOT NULL DEFAULT 1
+      CHECK (ativo IN (0, 1)),
+
+    repeticao TEXT NOT NULL CHECK (
+      repeticao IN ('regime', 'unico', 'diario', 'semanal')
+    ),
+
+    data TEXT,
+    horario TEXT,
+
+    dia_semana INTEGER
+      CHECK (dia_semana BETWEEN 0 AND 6),
+
+    antecedencia_dias INTEGER NOT NULL DEFAULT 0
+      CHECK (antecedencia_dias >= 0),
+
+    ids_notificacoes_json TEXT NOT NULL DEFAULT '[]',
+
+    FOREIGN KEY (perfil_id)
+      REFERENCES perfis(id)
+      ON DELETE CASCADE
+  );
+
+  INSERT INTO lembretes_novos (
+    id, perfil_id, tipo, titulo, mensagem, ativo,
+    repeticao, data, horario, dia_semana,
+    antecedencia_dias, ids_notificacoes_json
+  )
+  SELECT
+    id, perfil_id, tipo, titulo, mensagem, ativo,
+    repeticao, data, horario, dia_semana,
+    antecedencia_dias, ids_notificacoes_json
+  FROM lembretes;
+
+  DROP TABLE lembretes;
+
+  ALTER TABLE lembretes_novos RENAME TO lembretes;
+`;

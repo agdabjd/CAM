@@ -61,6 +61,24 @@ const PADROES = [
     0,
     0,
   ],
+  [
+    'inicio_menstruacao',
+    'Início previsto da menstruação',
+    'Confira a estimativa de início da menstruação no aplicativo.',
+    'regime',
+    '08:00',
+    null,
+    1,
+  ],
+  [
+    'fim_menstruacao',
+    'Fim previsto da menstruação',
+    'Confira seu acompanhamento e registre o fim quando acontecer.',
+    'regime',
+    '08:00',
+    null,
+    0,
+  ],
 ] as const;
 
 export async function prepararLembretes() {

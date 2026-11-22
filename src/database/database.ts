@@ -7,6 +7,7 @@ import {
   SCHEMA_V4,
   SCHEMA_V5,
   SCHEMA_V6,
+  SCHEMA_V7,
 } from './schema';
 
 let bancoPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -25,13 +26,13 @@ async function abrirEPrepararBanco() {
 
   const versao = resultado?.user_version ?? 0;
 
-  if (versao > 6) {
+  if (versao > 7) {
     throw new Error(
       'O banco pertence a uma versão mais recente do aplicativo.'
     );
   }
 
-  if (versao < 6) {
+  if (versao < 7) {
     await banco.withExclusiveTransactionAsync(async (transacao) => {
       if (versao === 0) {
         await transacao.execAsync(SCHEMA_V1);
@@ -53,8 +54,12 @@ async function abrirEPrepararBanco() {
         await transacao.execAsync(SCHEMA_V5);
       }
 
-      await transacao.execAsync(SCHEMA_V6);
-      await transacao.execAsync('PRAGMA user_version = 6');
+      if (versao < 6) {
+        await transacao.execAsync(SCHEMA_V6);
+      }
+
+      await transacao.execAsync(SCHEMA_V7);
+      await transacao.execAsync('PRAGMA user_version = 7');
     });
   }
 

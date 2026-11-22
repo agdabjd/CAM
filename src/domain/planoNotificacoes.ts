@@ -1,9 +1,16 @@
 import type { Lembrete } from '../database/lembretesRepository';
-import type { DadosLinhaDoTempo } from '../database/linhaDoTempoRepository';
+
+import type {
+  DadosLinhaDoTempo,
+} from '../database/linhaDoTempoRepository';
 
 import { somarDias } from './datas';
+
 import { calcularDia } from './contraceptivo/regime';
 import { configuracaoParaRegime } from './contraceptivo/configuracaoParaRegime';
+
+import { calcularDiaMenstrual } from './menstrual/cicloMenstrual';
+import { cicloComRegistros } from './menstrual/cicloComRegistros';
 
 export const DIAS_AGENDADOS = 30;
 
@@ -15,11 +22,47 @@ export type AvisoPlanejado = {
   instante: number;
 };
 
+const TIPOS_ANTICONCEPCIONAIS = new Set([
+  'acao',
+  'inicio_pausa',
+  'fim_pausa',
+]);
+
+const TIPOS_MENSTRUAIS = new Set([
+  'inicio_menstruacao',
+  'fim_menstruacao',
+]);
+
+export function tipoPermitidoNoModo(
+  tipo: string,
+  modo: string | null
+) {
+  if (TIPOS_ANTICONCEPCIONAIS.has(tipo)) {
+    return modo === 'anticoncepcional';
+  }
+
+  if (TIPOS_MENSTRUAIS.has(tipo)) {
+    return modo === 'menstrual';
+  }
+
+  return (
+    tipo === 'registro' ||
+    tipo === 'resumo_semanal' ||
+    tipo === 'personalizado'
+  );
+}
+
 function dataLocal(data: string, horario: string) {
   const [ano, mes, dia] = data.split('-').map(Number);
   const [hora, minuto] = horario.split(':').map(Number);
 
-  return new Date(ano, mes - 1, dia, hora, minuto).getTime();
+  return new Date(
+    ano,
+    mes - 1,
+    dia,
+    hora,
+    minuto
+  ).getTime();
 }
 
 function diaSemana(data: string) {
@@ -34,15 +77,45 @@ export function gerarPlanoNotificacoes(
 ) {
   const plano: AvisoPlanejado[] = [];
 
+  const fimJanela = somarDias(hoje, DIAS_AGENDADOS);
+
+  function configuracaoDaData(data: string) {
+    return dados.configuracoes.find(
+      (item) =>
+        item.vigente_desde <= data &&
+        (
+          item.vigente_ate === null ||
+          data < item.vigente_ate
+        )
+    );
+  }
+
   function adicionar(
     lembrete: Lembrete,
     dataAviso: string,
     horario: string,
     chave: string
   ) {
+    const configuracao = configuracaoDaData(dataAviso);
+
+    // Verifica o modo na data em que o aviso será entregue.
+    if (
+      !tipoPermitidoNoModo(
+        lembrete.tipo,
+        configuracao?.modo ?? null
+      )
+    ) {
+      return;
+    }
+
     const instante = dataLocal(dataAviso, horario);
 
-    if (!Number.isFinite(instante) || instante <= agora) return;
+    if (
+      !Number.isFinite(instante) ||
+      instante <= agora
+    ) {
+      return;
+    }
 
     plano.push({
       id: `oiutero:${lembrete.id}:${chave}`,
@@ -51,6 +124,27 @@ export function gerarPlanoNotificacoes(
       mensagem: lembrete.mensagem,
       instante,
     });
+  }
+
+  function adicionarAvisoAntecipado(
+    lembrete: Lembrete,
+    dataEvento: string
+  ) {
+    const dataAviso = somarDias(
+      dataEvento,
+      -lembrete.antecedencia_dias
+    );
+
+    if (dataAviso < hoje || dataAviso >= fimJanela) {
+      return;
+    }
+
+    adicionar(
+      lembrete,
+      dataAviso,
+      lembrete.horario ?? '08:00',
+      dataEvento
+    );
   }
 
   for (const lembrete of lembretes) {
@@ -69,27 +163,26 @@ export function gerarPlanoNotificacoes(
       continue;
     }
 
-    const avisoDePausa =
+    const anticoncepcional =
+      TIPOS_ANTICONCEPCIONAIS.has(lembrete.tipo);
+
+    const menstrual =
+      TIPOS_MENSTRUAIS.has(lembrete.tipo);
+
+    const avisoAntecipado =
+      menstrual ||
       lembrete.tipo === 'inicio_pausa' ||
       lembrete.tipo === 'fim_pausa';
 
     const limite =
       DIAS_AGENDADOS +
-      (avisoDePausa ? lembrete.antecedencia_dias : 0);
+      (avisoAntecipado ? lembrete.antecedencia_dias : 0);
 
     for (let indice = 0; indice < limite; indice++) {
       const data = somarDias(hoje, indice);
+      const configuracao = configuracaoDaData(data);
 
-      if (
-        lembrete.tipo === 'acao' ||
-        avisoDePausa
-      ) {
-        const configuracao = dados.configuracoes.find(
-          (item) =>
-            item.vigente_desde <= data &&
-            (item.vigente_ate === null || data < item.vigente_ate)
-        );
-
+      if (anticoncepcional) {
         if (
           !configuracao ||
           configuracao.modo !== 'anticoncepcional'
@@ -138,33 +231,74 @@ export function gerarPlanoNotificacoes(
             anterior.situacao === 'pausa';
         }
 
-        if (!evento) continue;
+        if (evento) {
+          adicionarAvisoAntecipado(lembrete, data);
+        }
 
-        const aviso = somarDias(
-          data,
-          -lembrete.antecedencia_dias
-        );
+        continue;
+      }
 
+      if (menstrual) {
         if (
-          aviso < hoje ||
-          aviso >= somarDias(hoje, DIAS_AGENDADOS)
+          !configuracao ||
+          configuracao.modo !== 'menstrual'
         ) {
           continue;
         }
 
-        adicionar(
-          lembrete,
-          aviso,
-          lembrete.horario ?? '08:00',
+        const ciclo = cicloComRegistros(
+          configuracao,
+          dados.menstruacoes,
           data
         );
+
+        const dia = calcularDiaMenstrual(ciclo, data);
+
+        if (lembrete.tipo === 'inicio_menstruacao') {
+          if (dia.diaDaMenstruacaoPrevista !== 1) {
+            continue;
+          }
+
+          const inicioRegistrado = dados.menstruacoes.some(
+            (periodo) => periodo.data_inicio === data
+          );
+
+          if (!inicioRegistrado) {
+            adicionarAvisoAntecipado(lembrete, data);
+          }
+
+          continue;
+        }
+
+        const ultimoDiaPrevisto =
+          dia.diaDaMenstruacaoPrevista ===
+          ciclo.duracaoMenstruacaoDias;
+
+        if (!ultimoDiaPrevisto) continue;
+
+        const inicioDoPeriodo = somarDias(
+          data,
+          1 - ciclo.duracaoMenstruacaoDias
+        );
+
+        const fimJaRegistrado = dados.menstruacoes.some(
+          (periodo) =>
+            periodo.data_inicio === inicioDoPeriodo &&
+            periodo.data_fim !== null
+        );
+
+        if (!fimJaRegistrado) {
+          adicionarAvisoAntecipado(lembrete, data);
+        }
 
         continue;
       }
 
       if (
         lembrete.tipo === 'registro' &&
-        dados.diarios.some((registro) => registro.data === data)
+        dados.diarios.some(
+          (registro) => registro.data === data
+        )
       ) {
         continue;
       }

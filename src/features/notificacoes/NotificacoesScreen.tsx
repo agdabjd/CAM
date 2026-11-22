@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Linking,
   Pressable,
   ScrollView,
@@ -23,7 +24,7 @@ import {
 } from '../../database/lembretesRepository';
 
 import { formatarData } from '../../domain/onboarding';
-import { validarData } from '../../domain/datas';
+import { validarData, hojeLocal, } from '../../domain/datas';
 
 import {
   agendarTeste,
@@ -31,6 +32,10 @@ import {
   sincronizarNotificacoes,
   type ResultadoSincronizacao,
 } from './notificacoesService';
+
+import { buscarConfiguracaoDaData } from '../../database/acompanhamentoRepository';
+
+import { tipoPermitidoNoModo } from '../../domain/planoNotificacoes';
 
 function Campo({
   titulo,
@@ -89,6 +94,7 @@ export default function NotificacoesScreen({
   const [ocupado, setOcupado] = useState(false);
   const [editor, setEditor] = useState<Lembrete | null>(null);
   const [dataTexto, setDataTexto] = useState('');
+  const [modoAtual, setModoAtual] = useState<string | null>(null);
 
   async function carregar() {
     setCarregando(true);
@@ -96,8 +102,23 @@ export default function NotificacoesScreen({
     try {
       const resumo = await sincronizarNotificacoes();
 
+      const [lista, configuracao] = await Promise.all([
+        listarLembretes(),
+        buscarConfiguracaoDaData(hojeLocal()),
+      ]);
+
+      const modo = configuracao?.modo ?? null;
+
       setResultado(resumo);
-      setLembretes(await listarLembretes());
+      setLembretes(lista);
+      setModoAtual(modo);
+
+      // Fecha um editor que deixou de pertencer ao modo atual.
+      setEditor((atual) =>
+        atual && !tipoPermitidoNoModo(atual.tipo, modo)
+          ? null
+          : atual
+      );
     } catch (erro) {
       mensagemErro(erro);
     } finally {
@@ -107,6 +128,17 @@ export default function NotificacoesScreen({
 
   useEffect(() => {
     void carregar();
+
+    const assinatura = AppState.addEventListener(
+      'change',
+      (estado) => {
+        if (estado === 'active') {
+          void carregar();
+        }
+      }
+    );
+
+    return () => assinatura.remove();
   }, []);
 
   async function executar(acao: () => Promise<void>) {
@@ -169,6 +201,11 @@ export default function NotificacoesScreen({
     }
   }
 
+  const lembretesVisiveis = lembretes.filter(
+    (lembrete) =>
+      tipoPermitidoNoModo(lembrete.tipo, modoAtual)
+  );
+
   return (
     <SafeAreaView style={s.pagina}>
       <View style={s.cabecalho}>
@@ -230,7 +267,9 @@ export default function NotificacoesScreen({
 
             {(
               editor.tipo === 'inicio_pausa' ||
-              editor.tipo === 'fim_pausa'
+              editor.tipo === 'fim_pausa' ||
+              editor.tipo === 'inicio_menstruacao' ||
+              editor.tipo === 'fim_menstruacao'
             ) && (
               <Campo
                 titulo="Avisar quantos dias antes? De 0 a 30"
@@ -411,7 +450,7 @@ export default function NotificacoesScreen({
             {carregando ? (
               <ActivityIndicator color="#8563A6" />
             ) : (
-              lembretes.map((lembrete) => (
+              lembretesVisiveis.map((lembrete) => (
                 <View key={lembrete.id} style={s.cartao}>
                   <View style={s.linha}>
                     <Pressable
