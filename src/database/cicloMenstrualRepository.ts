@@ -5,12 +5,14 @@ import {
   type ConfiguracaoSalva,
 } from './acompanhamentoRepository';
 
+import { listarMenstruacoes } from './menstrualRepository';
+
 import {
   calcularDiaMenstrual,
   proximoInicioPrevisto,
 } from '../domain/menstrual/cicloMenstrual';
 
-import { configuracaoParaCiclo } from '../domain/menstrual/configuracaoParaCiclo';
+import { cicloComRegistros } from '../domain/menstrual/cicloComRegistros';
 
 export async function buscarDiaMenstrual(data: string) {
   const configuracao = await buscarConfiguracaoDaData(data);
@@ -19,12 +21,17 @@ export async function buscarDiaMenstrual(data: string) {
     return null;
   }
 
+  const menstruacoes = await listarMenstruacoes();
+
+  const ciclo = cicloComRegistros(
+    configuracao,
+    menstruacoes,
+    data
+  );
+
   return {
     configuracaoId: configuracao.id,
-    ...calcularDiaMenstrual(
-      configuracaoParaCiclo(configuracao),
-      data
-    ),
+    ...calcularDiaMenstrual(ciclo, data),
   };
 }
 
@@ -32,17 +39,19 @@ export async function buscarProximaMenstruacaoPrevista(
   aPartirDe: string
 ) {
   const banco = await obterBanco();
+  const menstruacoes = await listarMenstruacoes();
 
-  const configuracoes = await banco.getAllAsync<ConfiguracaoSalva>(
-    `
-      SELECT *
-      FROM configuracoes
-      WHERE perfil_id = 1
-        AND (vigente_ate IS NULL OR vigente_ate > ?)
-      ORDER BY vigente_desde ASC
-    `,
-    aPartirDe
-  );
+  const configuracoes =
+    await banco.getAllAsync<ConfiguracaoSalva>(
+      `
+        SELECT *
+        FROM configuracoes
+        WHERE perfil_id = 1
+          AND (vigente_ate IS NULL OR vigente_ate > ?)
+        ORDER BY vigente_desde ASC
+      `,
+      aPartirDe
+    );
 
   for (const configuracao of configuracoes) {
     if (configuracao.modo !== 'menstrual') {
@@ -54,8 +63,14 @@ export async function buscarProximaMenstruacaoPrevista(
         ? aPartirDe
         : configuracao.vigente_desde;
 
+    const ciclo = cicloComRegistros(
+      configuracao,
+      menstruacoes,
+      inicioBusca
+    );
+
     const inicio = proximoInicioPrevisto(
-      configuracaoParaCiclo(configuracao),
+      ciclo,
       inicioBusca
     );
 

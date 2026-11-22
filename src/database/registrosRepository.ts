@@ -6,6 +6,8 @@ import { hojeLocal, validarData } from '../domain/datas';
 import { calcularDia } from '../domain/contraceptivo/regime';
 import { configuracaoParaRegime } from '../domain/contraceptivo/configuracaoParaRegime';
 
+import type { SQLiteDatabase } from 'expo-sqlite';
+
 export type AcaoRegistrada = {
   configuracao_id: number;
   horario_real: string;
@@ -127,6 +129,111 @@ export async function carregarDia(data: string): Promise<Diario> {
   };
 }
 
+async function registrarMenstruacaoPeloDiario(
+  transacao: SQLiteDatabase,
+  dados: Diario
+) {
+  if (
+    dados.sangramento_fluxo === 'nenhum' ||
+    dados.sangramento_tipo !== 'menstruacao'
+  ) {
+    return;
+  }
+
+  const configuracao =
+    await transacao.getFirstAsync<ConfiguracaoSalva>(
+      `
+        SELECT *
+        FROM configuracoes
+        WHERE perfil_id = 1
+          AND vigente_desde <= ?
+          AND (vigente_ate IS NULL OR ? < vigente_ate)
+        ORDER BY vigente_desde DESC
+        LIMIT 1
+      `,
+      dados.data,
+      dados.data
+    );
+
+  // A classificação não muda o regime anticoncepcional.
+  if (!configuracao || configuracao.modo !== 'menstrual') {
+    return;
+  }
+
+  const periodoExistente =
+    await transacao.getFirstAsync<{
+      id: number;
+      data_inicio: string;
+    }>(
+      `
+        SELECT id, data_inicio
+        FROM menstruacoes
+        WHERE perfil_id = 1
+          AND data_inicio <= ?
+          AND (data_fim IS NULL OR data_fim >= ?)
+        ORDER BY data_inicio DESC
+        LIMIT 1
+      `,
+      dados.data,
+      dados.data
+    );
+
+  if (periodoExistente) {
+    // Se o período já existe, preserva seu início.
+    // Preenche apenas um horário inicial ainda não informado.
+    if (periodoExistente.data_inicio === dados.data) {
+      await transacao.runAsync(
+        `
+          UPDATE menstruacoes
+          SET horario_inicio = COALESCE(horario_inicio, ?)
+          WHERE id = ?
+        `,
+        dados.horario,
+        periodoExistente.id
+      );
+    }
+
+    return;
+  }
+
+  const periodoPosterior =
+    await transacao.getFirstAsync<{ id: number }>(
+      `
+        SELECT id
+        FROM menstruacoes
+        WHERE perfil_id = 1 AND data_inicio > ?
+        LIMIT 1
+      `,
+      dados.data
+    );
+
+  if (periodoPosterior) {
+    throw new Error(
+      'Existe uma menstruação registrada depois dessa data. ' +
+      'Cadastre esse período anterior pelo formulário de menstruação, ' +
+      'informando início e fim.'
+    );
+  }
+
+  await transacao.runAsync(
+    `
+      INSERT INTO menstruacoes (
+        perfil_id,
+        configuracao_id,
+        data_inicio,
+        data_fim,
+        horario_inicio,
+        horario_fim,
+        observacoes
+      )
+      VALUES (1, ?, ?, NULL, ?, NULL, '')
+    `,
+    configuracao.id,
+    dados.data,
+    dados.horario
+  );
+}
+
 export async function salvarDia(dados: Diario) {
   validarDataReal(dados.data);
   validarHorario(dados.horario);
@@ -134,6 +241,7 @@ export async function salvarDia(dados: Diario) {
   const banco = await obterBanco();
 
   await banco.withExclusiveTransactionAsync(async (transacao) => {
+    await registrarMenstruacaoPeloDiario(transacao, dados);
     const conflito = await transacao.getFirstAsync<{ id: number }>(
       `
         SELECT id FROM registros_diarios

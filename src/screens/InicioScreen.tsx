@@ -43,7 +43,7 @@ import {
   periodoPrevistoAtualOuProximo,
 } from '../domain/menstrual/cicloMenstrual';
 
-import { configuracaoParaCiclo } from '../domain/menstrual/configuracaoParaCiclo';
+import { cicloComRegistros } from '../domain/menstrual/cicloComRegistros';
 
 import { useNotificacoes } from '../features/notificacoes/NotificacoesProvider';
 
@@ -55,6 +55,7 @@ export default function InicioScreen() {
     configuracao: ConfiguracaoSalva;
     diario: Diario;
     periodo: PeriodoMenstrual | null;
+    periodos: PeriodoMenstrual[];
   } | null>(null);
 
   const [carregando, setCarregando] = useState(true);
@@ -89,6 +90,7 @@ export default function InicioScreen() {
             periodo:
               periodos.find((item) => item.data_fim === null) ??
               null,
+            periodos,
           });
         })
         .catch(() => {
@@ -184,7 +186,11 @@ export default function InicioScreen() {
               : regime.pausa.apos * regime.intervaloDias
           );
   } else {
-    const ciclo = configuracaoParaCiclo(c);
+    const ciclo = cicloComRegistros(
+      c,
+      dados.periodos,
+      hoje
+    );
     const dia = calcularDiaMenstrual(ciclo, hoje);
     const previsto = periodoPrevistoAtualOuProximo(ciclo, hoje);
 
@@ -249,8 +255,10 @@ export default function InicioScreen() {
             onPress={() => {
               if (anticoncepcional) {
                 abrirDia();
+              } else if (dados.periodo) {
+                abrirPeriodo(dados.periodo.id, true);
               } else {
-                abrirPeriodo(dados.periodo?.id);
+                abrirPeriodo();
               }
             }}
           >
@@ -258,7 +266,7 @@ export default function InicioScreen() {
               {anticoncepcional
                 ? 'Registrar uso'
                 : dados.periodo
-                  ? 'Informar fim da menstruação'
+                  ? 'Registrar fim da menstruação'
                   : 'Registrar menstruação'}
             </Text>
           </Pressable>

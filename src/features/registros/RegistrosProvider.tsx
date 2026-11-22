@@ -50,12 +50,16 @@ type ContextoRegistros = {
   versao: number;
   atualizar: () => void;
   abrirDia: (data?: string) => void;
-  abrirPeriodo: (id?: number) => void;
+  abrirPeriodo: (id?: number, finalizar?: boolean) => void;
 };
 
 type ModalAberto =
   | { tipo: 'dia'; data: string }
-  | { tipo: 'periodo'; id?: number }
+  | {
+      tipo: 'periodo';
+      id?: number;
+      finalizar?: boolean;
+    }
   | null;
 
 const Contexto = createContext<ContextoRegistros | undefined>(
@@ -540,10 +544,12 @@ function FormularioDia({
 
 function FormularioPeriodo({
   id,
+  finalizar = false,
   fechar,
   salvo,
 }: {
   id?: number;
+  finalizar?: boolean;
   fechar: () => void;
   salvo: () => void;
 }) {
@@ -571,10 +577,19 @@ function FormularioPeriodo({
 
         setInicio(formatarData(periodo.data_inicio));
         setFim(
-          periodo.data_fim ? formatarData(periodo.data_fim) : ''
+          periodo.data_fim
+            ? formatarData(periodo.data_fim)
+            : finalizar
+              ? formatarData(hojeLocal())
+              : ''
         );
+
         setHoraInicio(periodo.horario_inicio ?? '');
-        setHoraFim(periodo.horario_fim ?? '');
+
+        setHoraFim(
+          periodo.horario_fim ??
+            (finalizar ? horarioAgora() : '')
+        );
         setObservacoes(periodo.observacoes);
       })
       .catch(() => {
@@ -587,13 +602,18 @@ function FormularioPeriodo({
     return () => {
       ativo = false;
     };
-  }, [id]);
+  }, [id, finalizar]);
 
   async function enviar() {
     if (ocupado) return;
     setOcupado(true);
 
     try {
+
+      if (finalizar && !fim.trim()) {
+        throw new Error('Informe a data de fim da menstruação.');
+      }
+
       await salvarPeriodo({
         id,
         data_inicio: paraISO(inicio),
@@ -630,7 +650,13 @@ function FormularioPeriodo({
 
   return (
     <Pagina
-      titulo={id ? 'Editar menstruação' : 'Registrar menstruação'}
+      titulo={
+        finalizar
+          ? 'Registrar fim da menstruação'
+          : id
+            ? 'Editar menstruação'
+            : 'Registrar menstruação'
+      }
       ocupado={ocupado}
       fechar={fechar}
       salvar={enviar}
@@ -707,7 +733,12 @@ export function RegistrosProvider({
         atualizar,
         abrirDia: (data = hojeLocal()) =>
           setModal({ tipo: 'dia', data }),
-        abrirPeriodo: (id) => setModal({ tipo: 'periodo', id }),
+        abrirPeriodo: (id, finalizar = false) =>
+          setModal({
+            tipo: 'periodo',
+            id,
+            finalizar,
+          }),
       }}
     >
       {children}
@@ -729,8 +760,12 @@ export function RegistrosProvider({
 
           {modal?.tipo === 'periodo' && (
             <FormularioPeriodo
-              key={`periodo-${modal.id ?? 'novo'}`}
+              key={
+                `periodo-${modal.id ?? 'novo'}-` +
+                `${modal.finalizar ? 'fim' : 'editar'}`
+              }
               id={modal.id}
+              finalizar={modal.finalizar}
               fechar={() => setModal(null)}
               salvo={salvo}
             />

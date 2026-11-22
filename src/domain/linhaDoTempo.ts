@@ -10,7 +10,8 @@ import { calcularDia } from './contraceptivo/regime';
 import { configuracaoParaRegime } from './contraceptivo/configuracaoParaRegime';
 
 import { calcularDiaMenstrual } from './menstrual/cicloMenstrual';
-import { configuracaoParaCiclo } from './menstrual/configuracaoParaCiclo';
+
+import { cicloComRegistros } from './menstrual/cicloComRegistros';
 
 export type TipoLinha =
   | 'acao'
@@ -263,7 +264,11 @@ export function criarConsultaLinhaDoTempo(
         );
       }
     } else if (configuracao?.modo === 'menstrual') {
-      const ciclo = configuracaoParaCiclo(configuracao);
+      const ciclo = cicloComRegistros(
+        configuracao,
+        dados.menstruacoes,
+        data
+      );
       const dia = calcularDiaMenstrual(ciclo, data);
 
       if (dia.situacao === 'menstruacao_prevista') {
