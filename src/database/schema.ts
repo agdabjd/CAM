@@ -243,3 +243,18 @@ export const SCHEMA_V5 = `
   ALTER TABLE menstruacoes ADD COLUMN horario_inicio TEXT;
   ALTER TABLE menstruacoes ADD COLUMN horario_fim TEXT;
 `;
+
+export const SCHEMA_V6 = `
+  CREATE TABLE preferencias (
+    perfil_id INTEGER PRIMARY KEY CHECK (perfil_id = 1),
+    primeiro_dia_semana INTEGER NOT NULL DEFAULT 0
+      CHECK (primeiro_dia_semana IN (0, 1)),
+
+    FOREIGN KEY (perfil_id)
+      REFERENCES perfis(id)
+      ON DELETE CASCADE
+  );
+
+  INSERT INTO preferencias (perfil_id, primeiro_dia_semana)
+  SELECT id, 0 FROM perfis WHERE id = 1;
+`;

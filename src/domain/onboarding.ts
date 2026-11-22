@@ -26,7 +26,7 @@ export function formatarData(data: string) {
   return `${dia}/${mes}/${ano}`;
 }
 
-function lerData(texto: string) {
+export function lerData(texto: string) {
   const resultado = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(
     texto.trim()
   );
@@ -79,17 +79,11 @@ export function validarMetodo(form: Formulario) {
   }
 }
 
-export function validarConfiguracaoInicial(
+export function validarConfiguracao(
   dados: NovaConfiguracao
 ) {
   validarData(dados.dataReferencia);
   validarData(dados.vigenteDesde);
-
-  if (dados.vigenteDesde > dados.dataReferencia) {
-    throw new Error(
-      'A configuração inicial deve abranger a data de referência.'
-    );
-  }
 
   if (dados.modo === 'anticoncepcional') {
     if (!dados.metodo.trim() || !dados.acao.trim()) {
@@ -100,11 +94,23 @@ export function validarConfiguracaoInicial(
   } else {
     if (dados.dataReferencia > hojeLocal()) {
       throw new Error(
-        'O início da última menstruação não pode ser uma data futura.'
+        'O início da última menstruação não pode ser futuro.'
       );
     }
 
     validarCiclo(dados);
+  }
+}
+
+export function validarConfiguracaoInicial(
+  dados: NovaConfiguracao
+) {
+  validarConfiguracao(dados);
+
+  if (dados.vigenteDesde > dados.dataReferencia) {
+    throw new Error(
+      'A configuração inicial deve abranger a data de referência.'
+    );
   }
 }
 

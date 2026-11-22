@@ -18,10 +18,12 @@ import {
 
 export default function ResumoConfiguracao({
   dados,
+  aPartirDe,
 }: {
   dados: NovaConfiguracao;
+  aPartirDe?: string;
 }) {
-  const hoje = hojeLocal();
+  const hoje = aPartirDe ?? hojeLocal();
 
   if (dados.modo === 'menstrual') {
     const dia = calcularDiaMenstrual(dados, hoje);
@@ -105,7 +107,10 @@ export default function ResumoConfiguracao({
             }`}
       </Text>
 
-      <Text>Hoje: {textos[situacao.situacao]}</Text>
+      <Text>
+        Situação em {formatarData(hoje)}:{' '}
+        {textos[situacao.situacao]}
+      </Text>
 
       <Text style={{ fontWeight: '600' }}>
         Próximas ações previstas

@@ -83,15 +83,23 @@ function deslocarMes(mes: string, quantidade: number) {
   return valor.toISOString().slice(0, 10);
 }
 
-function montarGrade(mes: string) {
-  const primeiro = new Date(`${mes}T12:00:00Z`).getUTCDay();
+function montarGrade(
+  mes: string,
+  primeiroDiaSemana: 0 | 1
+) {
+  const diaOriginal =
+    new Date(`${mes}T12:00:00Z`).getUTCDay();
+
+  const primeiro =
+    (diaOriginal - primeiroDiaSemana + 7) % 7;
 
   const quantidade = diferencaDias(
     mes,
     deslocarMes(mes, 1)
   );
 
-  const tamanho = Math.ceil((primeiro + quantidade) / 7) * 7;
+  const tamanho =
+    Math.ceil((primeiro + quantidade) / 7) * 7;
 
   return Array.from({ length: tamanho }, (_, indice) => {
     const dia = indice - primeiro;
@@ -148,7 +156,18 @@ export default function CalendarioScreen() {
     [dados, hoje]
   );
 
-  const grade = useMemo(() => montarGrade(mes), [mes]);
+  const primeiroDiaSemana: 0 | 1 =
+    dados?.primeiroDiaSemana ?? 0;
+
+  const grade = useMemo(
+    () => montarGrade(mes, primeiroDiaSemana),
+    [mes, primeiroDiaSemana]
+  );
+
+  const nomesSemana =
+    primeiroDiaSemana === 0
+      ? ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+      : ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
 
   function navegar(quantidade: number) {
     const novoMes = deslocarMes(mes, quantidade);
@@ -214,7 +233,7 @@ export default function CalendarioScreen() {
               </View>
 
               <View style={s.grade}>
-                {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(
+                {nomesSemana.map(
                   (nome, indice) => (
                     <View key={`semana-${indice}`} style={s.semana}>
                       <Text style={s.textoSemana}>{nome}</Text>

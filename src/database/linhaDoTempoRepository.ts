@@ -40,6 +40,7 @@ export type DadosLinhaDoTempo = {
   }[];
   acoes: AcaoLinhaDoTempo[];
   menstruacoes: MenstruacaoLinhaDoTempo[];
+  primeiroDiaSemana?: 0 | 1;
 };
 
 export async function carregarLinhaDoTempo() {
@@ -114,12 +115,24 @@ export async function carregarLinhaDoTempo() {
         `
       );
 
+      const preferencias = await transacao.getFirstAsync<{
+        primeiro_dia_semana: 0 | 1;
+      }>(
+        `
+          SELECT primeiro_dia_semana
+          FROM preferencias
+          WHERE perfil_id = 1
+        `
+      );
+
+
     dados = {
       configuracoes,
       diarios,
       sintomas,
       acoes,
       menstruacoes,
+      primeiroDiaSemana: preferencias?.primeiro_dia_semana ?? 0,
     };
   });
 

@@ -16,6 +16,8 @@ import {
   type Usuario,
 } from './authService';
 
+import { buscarPerfilPublico } from '../database/perfilRepository';
+
 type AuthContextValue = {
   usuario: Usuario | null;
   temPerfil: boolean;
@@ -24,6 +26,7 @@ type AuthContextValue = {
   cadastrar: (dados: DadosCadastro) => Promise<void>;
   entrar: (email: string, senha: string) => Promise<void>;
   sair: () => Promise<void>;
+  atualizarUsuario: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(
@@ -95,6 +98,16 @@ export function AuthProvider({
     setUsuario(null);
   }
 
+  async function atualizarUsuario() {
+    const perfil = await buscarPerfilPublico();
+
+    if (!perfil) {
+      throw new Error('Perfil não encontrado.');
+    }
+
+    setUsuario(perfil);
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -105,6 +118,7 @@ export function AuthProvider({
         cadastrar,
         entrar,
         sair,
+        atualizarUsuario,
       }}
     >
       {children}

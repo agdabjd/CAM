@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -24,17 +24,26 @@ import {
   salvarRascunho,
 } from '../database/onboardingRepository';
 
-import type { NovaConfiguracao } from '../database/acompanhamentoRepository';
+import type {
+  ConfiguracaoSalva,
+  NovaConfiguracao,
+} from '../database/acompanhamentoRepository';
+
+import { salvarAlteracaoConfiguracao } from '../database/configuracaoPerfilRepository';
 
 import {
   FORM_INICIAL,
   formatarData,
+  lerData,
   montarConfiguracao,
+  validarConfiguracao,
   validarMetodo,
   type Formulario,
 } from '../domain/onboarding';
 
-import { hojeLocal } from '../domain/datas';
+import { hojeLocal, somarDias } from '../domain/datas';
+
+import { formularioDaConfiguracao } from '../domain/formularioConfiguracao';
 
 const ETAPAS = [
   'modo',
@@ -45,6 +54,12 @@ const ETAPAS = [
 ] as const;
 
 type Etapa = (typeof ETAPAS)[number];
+
+type Props = {
+  onConcluido: () => void;
+  configuracaoEdicao?: ConfiguracaoSalva;
+  onCancelar?: () => void;
+};
 
 const METODOS = [
   { nome: 'Pílula', acao: 'Tomar dose' },
@@ -64,7 +79,7 @@ function Campo({
 
       <TextInput
         {...props}
-        style={styles.input}
+        style={[styles.input, props.style]}
         placeholderTextColor="#938A9D"
       />
     </View>
@@ -90,45 +105,88 @@ function Opcao({
         selecionada && styles.opcaoSelecionada,
       ]}
     >
-      <Text>{texto}</Text>
+      <Text style={styles.textoOpcao}>{texto}</Text>
     </Pressable>
   );
 }
 
 export default function OnboardingScreen({
   onConcluido,
-}: {
-  onConcluido: () => void;
-}) {
+  configuracaoEdicao,
+  onCancelar,
+}: Props) {
   const [form, setForm] = useState<Formulario>({
     ...FORM_INICIAL,
     dataReferencia: formatarData(hojeLocal()),
   });
 
-  const [etapa, setEtapa] = useState<Etapa>('modo');
-  const [revisao, setRevisao] = useState<NovaConfiguracao | null>(
-    null
+  const [vigenciaEdicao, setVigenciaEdicao] = useState(
+    formatarData(somarDias(hojeLocal(), 1))
   );
+
+  const [etapa, setEtapa] = useState<Etapa>('modo');
+
+  const [revisao, setRevisao] =
+    useState<NovaConfiguracao | null>(null);
 
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState(false);
   const [ocupado, setOcupado] = useState(false);
 
+  const emExecucao = useRef(false);
+
+  const editando = configuracaoEdicao !== undefined;
+
   useEffect(() => {
     let ativo = true;
 
     async function carregar() {
+      setCarregando(true);
+      setErroCarga(false);
+      setRevisao(null);
+      setEtapa('modo');
+
       try {
+        const hoje = hojeLocal();
+
+        if (configuracaoEdicao) {
+          const formulario = formularioDaConfiguracao(
+            configuracaoEdicao
+          );
+
+          const inicioAlteracao =
+            configuracaoEdicao.vigente_desde > hoje
+              ? configuracaoEdicao.vigente_desde
+              : somarDias(hoje, 1);
+
+          if (!ativo) return;
+
+          setForm(formulario);
+          setVigenciaEdicao(formatarData(inicioAlteracao));
+
+          return;
+        }
+
+        const formularioInicial: Formulario = {
+          ...FORM_INICIAL,
+          dataReferencia: formatarData(hoje),
+        };
+
         const rascunho = await carregarRascunho();
 
-        if (!ativo || !rascunho) return;
+        if (!ativo) return;
 
-        const recuperado = {
-          ...FORM_INICIAL,
+        if (!rascunho) {
+          setForm(formularioInicial);
+          return;
+        }
+
+        const recuperado: Formulario = {
+          ...formularioInicial,
           ...rascunho.campos,
         };
 
-        let etapaRecuperada =
+        let etapaRecuperada: Etapa =
           ETAPAS.find((item) => item === rascunho.etapa) ??
           'modo';
 
@@ -146,9 +204,13 @@ export default function OnboardingScreen({
         setEtapa(etapaRecuperada);
         setRevisao(resumo);
       } catch {
-        if (ativo) setErroCarga(true);
+        if (ativo) {
+          setErroCarga(true);
+        }
       } finally {
-        if (ativo) setCarregando(false);
+        if (ativo) {
+          setCarregando(false);
+        }
       }
     }
 
@@ -157,7 +219,7 @@ export default function OnboardingScreen({
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [configuracaoEdicao]);
 
   function alterar(campo: keyof Formulario, valor: string) {
     setForm((anterior) => ({
@@ -166,19 +228,53 @@ export default function OnboardingScreen({
     }));
   }
 
+  function obterVigenciaEdicao() {
+    const vigenteDesde = lerData(vigenciaEdicao);
+
+    if (vigenteDesde <= hojeLocal()) {
+      throw new Error(
+        'A alteração deve começar amanhã ou em uma data posterior.'
+      );
+    }
+
+    return vigenteDesde;
+  }
+
+  function obterDados(): NovaConfiguracao {
+    const dados = montarConfiguracao(form);
+
+    if (!editando) {
+      return dados;
+    }
+
+    const alteracao: NovaConfiguracao = {
+      ...dados,
+      vigenteDesde: obterVigenciaEdicao(),
+    };
+
+    validarConfiguracao(alteracao);
+
+    return alteracao;
+  }
+
   async function irPara(proxima: Etapa) {
     const resumo =
-      proxima === 'resumo' ? montarConfiguracao(form) : null;
+      proxima === 'resumo' ? obterDados() : null;
 
-    await salvarRascunho(proxima, form);
+    // A edição pelo Perfil não modifica o rascunho
+    // utilizado no primeiro acesso.
+    if (!editando) {
+      await salvarRascunho(proxima, form);
+    }
 
     setRevisao(resumo);
     setEtapa(proxima);
   }
 
   async function executar(acao: () => Promise<void>) {
-    if (ocupado) return;
+    if (emExecucao.current) return;
 
+    emExecucao.current = true;
     setOcupado(true);
 
     try {
@@ -189,6 +285,7 @@ export default function OnboardingScreen({
         erro instanceof Error ? erro.message : 'Tente novamente.'
       );
     } finally {
+      emExecucao.current = false;
       setOcupado(false);
     }
   }
@@ -203,22 +300,39 @@ export default function OnboardingScreen({
           throw new Error('Escolha o acompanhamento.');
         }
 
+        if (editando) {
+          obterVigenciaEdicao();
+        }
+
         await irPara(
           form.modo === 'anticoncepcional'
             ? 'metodo'
             : 'menstrual'
         );
-      } else if (etapa === 'metodo') {
+
+        return;
+      }
+
+      if (etapa === 'metodo') {
         validarMetodo(form);
         await irPara('regime');
-      } else if (etapa === 'regime' || etapa === 'menstrual') {
-        await irPara('resumo');
-      } else {
-        const dados = montarConfiguracao(form);
-
-        await finalizarOnboarding(dados);
-        onConcluido();
+        return;
       }
+
+      if (etapa === 'regime' || etapa === 'menstrual') {
+        await irPara('resumo');
+        return;
+      }
+
+      const dados = obterDados();
+
+      if (editando) {
+        await salvarAlteracaoConfiguracao(dados);
+      } else {
+        await finalizarOnboarding(dados);
+      }
+
+      onConcluido();
     });
   }
 
@@ -241,10 +355,21 @@ export default function OnboardingScreen({
     return (
       <SafeAreaView style={styles.centralizado}>
         {erroCarga ? (
-          <Text>
-            Não foi possível carregar a configuração.
-            Feche e abra o aplicativo para tentar novamente.
-          </Text>
+          <>
+            <Text style={styles.mensagemErro}>
+              Não foi possível carregar a configuração.
+              Feche e abra esta tela para tentar novamente.
+            </Text>
+
+            {onCancelar && (
+              <Pressable
+                onPress={onCancelar}
+                style={{ marginTop: 20 }}
+              >
+                <Text style={styles.link}>Fechar</Text>
+              </Pressable>
+            )}
+          </>
         ) : (
           <ActivityIndicator size="large" color="#8563A6" />
         )}
@@ -253,7 +378,9 @@ export default function OnboardingScreen({
   }
 
   const titulos: Record<Etapa, string> = {
-    modo: 'Como você quer acompanhar?',
+    modo: editando
+      ? 'Alterar acompanhamento'
+      : 'Como você quer acompanhar?',
     metodo: 'Seu anticoncepcional',
     regime: 'Frequência e pausas',
     menstrual: 'Seu acompanhamento menstrual',
@@ -284,17 +411,43 @@ export default function OnboardingScreen({
         >
           <Text style={styles.titulo}>{titulos[etapa]}</Text>
 
+          {onCancelar && (
+            <Pressable
+              onPress={onCancelar}
+              disabled={ocupado}
+              style={styles.cancelar}
+            >
+              <Text style={styles.link}>
+                Cancelar alteração
+              </Text>
+            </Pressable>
+          )}
+
           {etapa === 'modo' && (
             <>
               <Text style={styles.ajuda}>
-                Você poderá alterar o acompanhamento pelo Perfil
-                quando essa função estiver disponível.
+                {editando
+                  ? 'Escolha o acompanhamento e a data em que a nova configuração começará.'
+                  : 'Escolha como deseja acompanhar sua rotina. Você poderá alterar essa configuração pelo Perfil.'}
               </Text>
+
+              {editando && (
+                <Campo
+                  rotulo="A alteração começará em"
+                  value={vigenciaEdicao}
+                  onChangeText={setVigenciaEdicao}
+                  placeholder="dd/mm/aaaa"
+                  maxLength={10}
+                  editable={!ocupado}
+                />
+              )}
 
               <Opcao
                 texto="Uso anticoncepcional"
                 selecionada={form.modo === 'anticoncepcional'}
-                onPress={() => alterar('modo', 'anticoncepcional')}
+                onPress={() =>
+                  alterar('modo', 'anticoncepcional')
+                }
               />
 
               <Opcao
@@ -328,36 +481,47 @@ export default function OnboardingScreen({
                 <Campo
                   rotulo="Nome do método"
                   value={form.outroMetodo}
-                  onChangeText={(v) => alterar('outroMetodo', v)}
+                  onChangeText={(valor) =>
+                    alterar('outroMetodo', valor)
+                  }
+                  editable={!ocupado}
                 />
               )}
 
               <Campo
                 rotulo="Ação que deseja acompanhar"
                 value={form.acao}
-                onChangeText={(v) => alterar('acao', v)}
+                onChangeText={(valor) => alterar('acao', valor)}
                 placeholder="Ex.: trocar adesivo"
+                editable={!ocupado}
               />
 
               <Campo
                 rotulo="Primeiro dia do período de uso"
                 value={form.dataReferencia}
-                onChangeText={(v) => alterar('dataReferencia', v)}
+                onChangeText={(valor) =>
+                  alterar('dataReferencia', valor)
+                }
                 placeholder="dd/mm/aaaa"
                 maxLength={10}
+                editable={!ocupado}
               />
 
               <Text style={styles.ajuda}>
-                Pode ser uma data anterior à instalação.
-                Ela será a referência para os cálculos.
+                Essa data será a referência para os cálculos.
+                Pode ser anterior à instalação ou à data em que
+                a alteração começará a valer.
               </Text>
 
               <Campo
                 rotulo="Horário da ação"
                 value={form.horario}
-                onChangeText={(v) => alterar('horario', v)}
+                onChangeText={(valor) =>
+                  alterar('horario', valor)
+                }
                 placeholder="08:00"
                 maxLength={5}
+                editable={!ocupado}
               />
             </>
           )}
@@ -367,15 +531,20 @@ export default function OnboardingScreen({
               <Campo
                 rotulo="Realizar a ação a cada quantos dias?"
                 value={form.intervaloDias}
-                onChangeText={(v) => alterar('intervaloDias', v)}
+                onChangeText={(valor) =>
+                  alterar('intervaloDias', valor)
+                }
                 keyboardType="number-pad"
                 placeholder="Informe a quantidade de dias"
+                editable={!ocupado}
               />
 
               <Opcao
                 texto="Uso contínuo, sem pausa"
                 selecionada={form.pausaTipo === 'nenhuma'}
-                onPress={() => alterar('pausaTipo', 'nenhuma')}
+                onPress={() =>
+                  alterar('pausaTipo', 'nenhuma')
+                }
               />
 
               <Opcao
@@ -399,15 +568,21 @@ export default function OnboardingScreen({
                         : `Pausar após quantas ${unidade} previstas?`
                     }
                     value={form.pausaApos}
-                    onChangeText={(v) => alterar('pausaApos', v)}
+                    onChangeText={(valor) =>
+                      alterar('pausaApos', valor)
+                    }
                     keyboardType="number-pad"
+                    editable={!ocupado}
                   />
 
                   <Campo
                     rotulo="Quantos dias dura a pausa?"
                     value={form.pausaDuracao}
-                    onChangeText={(v) => alterar('pausaDuracao', v)}
+                    onChangeText={(valor) =>
+                      alterar('pausaDuracao', valor)
+                    }
                     keyboardType="number-pad"
+                    editable={!ocupado}
                   />
 
                   {form.pausaTipo === 'acoes' && (
@@ -426,25 +601,32 @@ export default function OnboardingScreen({
               <Campo
                 rotulo="Primeiro dia da última menstruação"
                 value={form.dataReferencia}
-                onChangeText={(v) => alterar('dataReferencia', v)}
+                onChangeText={(valor) =>
+                  alterar('dataReferencia', valor)
+                }
                 placeholder="dd/mm/aaaa"
                 maxLength={10}
+                editable={!ocupado}
               />
 
               <Campo
                 rotulo="Duração habitual do ciclo, em dias"
                 value={form.duracaoCiclo}
-                onChangeText={(v) => alterar('duracaoCiclo', v)}
+                onChangeText={(valor) =>
+                  alterar('duracaoCiclo', valor)
+                }
                 keyboardType="number-pad"
+                editable={!ocupado}
               />
 
               <Campo
                 rotulo="Duração habitual da menstruação, em dias"
                 value={form.duracaoMenstruacao}
-                onChangeText={(v) =>
-                  alterar('duracaoMenstruacao', v)
+                onChangeText={(valor) =>
+                  alterar('duracaoMenstruacao', valor)
                 }
                 keyboardType="number-pad"
+                editable={!ocupado}
               />
 
               <Text style={styles.ajuda}>
@@ -457,7 +639,29 @@ export default function OnboardingScreen({
 
           {etapa === 'resumo' && revisao && (
             <View style={styles.cartao}>
-              <ResumoConfiguracao dados={revisao} />
+              {editando && (
+                <>
+                  <Text style={styles.vigenciaResumo}>
+                    Válida a partir de{' '}
+                    {formatarData(revisao.vigenteDesde)}
+                  </Text>
+
+                  <Text style={styles.ajuda}>
+                    Os registros anteriores serão preservados.
+                    Alterações já programadas a partir dessa
+                    data serão substituídas.
+                  </Text>
+                </>
+              )}
+
+              <ResumoConfiguracao
+                dados={revisao}
+                aPartirDe={
+                  revisao.vigenteDesde > hojeLocal()
+                    ? revisao.vigenteDesde
+                    : hojeLocal()
+                }
+              />
             </View>
           )}
 
@@ -468,7 +672,9 @@ export default function OnboardingScreen({
                 disabled={ocupado}
                 style={styles.botaoSecundario}
               >
-                <Text style={styles.textoSecundario}>Voltar</Text>
+                <Text style={styles.textoSecundario}>
+                  Voltar
+                </Text>
               </Pressable>
             )}
 
@@ -485,7 +691,9 @@ export default function OnboardingScreen({
               ) : (
                 <Text style={styles.textoBotao}>
                   {etapa === 'resumo'
-                    ? 'Confirmar e começar'
+                    ? editando
+                      ? 'Salvar alteração'
+                      : 'Confirmar e começar'
                     : 'Continuar'}
                 </Text>
               )}
@@ -513,11 +721,23 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 40,
   },
+  conteudoCentralizado: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   titulo: {
     fontSize: 24,
     fontWeight: '600',
     color: '#182235',
     marginBottom: 24,
+  },
+  cancelar: {
+    marginBottom: 20,
+    alignSelf: 'flex-start',
+  },
+  link: {
+    color: '#8563A6',
+    fontSize: 14,
   },
   campo: {
     marginTop: 12,
@@ -553,12 +773,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#E9DFF2',
     borderColor: '#8563A6',
   },
+  textoOpcao: {
+    color: '#182235',
+  },
   cartao: {
     padding: 20,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#EAE3F0',
     backgroundColor: '#FFFFFF',
+  },
+  vigenciaResumo: {
+    fontWeight: '600',
+    color: '#182235',
+    marginBottom: 12,
   },
   botoes: {
     marginTop: 24,
@@ -585,8 +813,9 @@ const styles = StyleSheet.create({
     color: '#8563A6',
     fontSize: 16,
   },
-  conteudoCentralizado: {
-    flexGrow: 1,
-    justifyContent: 'center',
+  mensagemErro: {
+    color: '#71677E',
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
