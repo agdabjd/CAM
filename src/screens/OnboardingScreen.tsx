@@ -45,6 +45,11 @@ import { hojeLocal, somarDias } from '../domain/datas';
 
 import { formularioDaConfiguracao } from '../domain/formularioConfiguracao';
 
+import {
+  CampoTextoVisivel,
+  RolagemFormulario,
+} from '../components/FormularioComTeclado';
+
 const ETAPAS = [
   'modo',
   'metodo',
@@ -77,7 +82,7 @@ function Campo({
     <View style={styles.campo}>
       <Text style={styles.rotulo}>{rotulo}</Text>
 
-      <TextInput
+      <CampoTextoVisivel
         {...props}
         style={[styles.input, props.style]}
         placeholderTextColor="#938A9D"
@@ -399,9 +404,9 @@ export default function OnboardingScreen({
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
-        <ScrollView
+        <RolagemFormulario
           contentContainerStyle={[
             styles.conteudo,
             styles.conteudoCentralizado,
@@ -699,7 +704,7 @@ export default function OnboardingScreen({
               )}
             </Pressable>
           </View>
-        </ScrollView>
+        </RolagemFormulario>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

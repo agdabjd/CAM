@@ -46,6 +46,11 @@ import { formatarData } from '../../domain/onboarding';
 import { calcularDia } from '../../domain/contraceptivo/regime';
 import { configuracaoParaRegime } from '../../domain/contraceptivo/configuracaoParaRegime';
 
+import {
+  CampoTextoVisivel,
+  RolagemFormulario,
+} from '../../components/FormularioComTeclado';
+
 type ContextoRegistros = {
   versao: number;
   atualizar: () => void;
@@ -97,9 +102,13 @@ function Campo({
   return (
     <View style={{ marginBottom: 14 }}>
       <Text style={s.rotulo}>{rotulo}</Text>
-      <TextInput
+      <CampoTextoVisivel
         {...props}
-        style={[s.input, props.multiline && s.observacoes]}
+        style={[
+          s.input,
+          props.multiline && s.observacoes,
+          props.style,
+        ]}
         placeholderTextColor="#938A9D"
       />
     </View>
@@ -158,9 +167,9 @@ function Pagina({
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
-        <ScrollView
+        <RolagemFormulario
           contentContainerStyle={{ padding: 22, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
           pointerEvents={ocupado ? 'none' : 'auto'}
@@ -178,7 +187,7 @@ function Pagina({
               <Text style={s.textoBotao}>Salvar registro</Text>
             )}
           </Pressable>
-        </ScrollView>
+        </RolagemFormulario>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
