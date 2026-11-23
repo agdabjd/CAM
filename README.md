@@ -79,6 +79,7 @@ O aplicativo possui caráter de acompanhamento e organização de informações.
 
 ## Organização do projeto
 
+```text
 CAM/
 ├── assets/                         # Imagens, ícones e recursos visuais
 ├── src/
@@ -139,6 +140,7 @@ CAM/
 ├── package-lock.json
 ├── tsconfig.json
 └── LICENSE
+```
 
 Os testes automatizados ficam próximos das implementações de domínio, em arquivos com o sufixo .test.ts.
 
